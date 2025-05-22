@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Authentication Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #cccccc;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: white;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .sent {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .received {
+            background-color: #f1f1f1;
+        }
+        .system {
+            background-color: #fff9c4;
+            font-style: italic;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+    </style>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    .video-container {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+    }
+    .video-box {
+        width: 48%;
+    }
+    video, canvas {
+        width: 100%;
+        background-color: #f0f0f0;
+        border: 1px solid #ddd;
+    }
+    button, input {
+        padding: 10px 15px;
+        margin: 10px 5px 10px 0;
+    }
+    button {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+    }
+    .status {
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #f8f8f8;
+        border-radius: 4px;
+    }
+    .controls {
+        margin: 10px 0;
+    }
+</style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket Authentication Test</h1>
+        
+        <div class="card" id="login-section">
+            <h2>1. Login</h2>
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Enter username">
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter password">
+            </div>
+            <button id="login-btn" onclick="login()">Login</button>
+            <div id="login-status"></div>
+        </div>
+        
+        <div class="card" id="token-section">
+            <h2>2. Get WebSocket Token</h2>
+            <button id="get-token-btn" onclick="getWsToken()" disabled>Get WebSocket Token</button>
+            <div id="token-status"></div>
+        </div>
+        
+        <div class="card" id="websocket-section">
+            <h2>3. Video Processing Test</h2>
+    
+            <div>
+                <input type="file" id="videoFile" accept="video/*">
+                <button id="playBtn" disabled>Play Video</button>
+                <button id="pauseBtn" disabled>Pause</button>
+                <button id="connectBtn" disabled>Connect to Server</button>
+                <button id="disconnectBtn" disabled>Disconnect</button>
+            </div>
+            
+            <div class="status" id="status">Status: Idle</div>
+            <div class="status" id="connection-status">Status: Idle</div>
+            
+            <div class="video-container">
+                <div class="video-box">
+                    <h3>Original Video</h3>
+                    <video id="video" controls></video>
+                </div>
+                <div class="video-box">
+                    <h3>Processed Video</h3>
+                    <canvas id="processedCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variables
+        let accessToken = '';
+        let wsToken = '';
+        let socket = null;
+        
+        // Login function
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginStatus = document.getElementById('login-status');
+            
+            if (!username || !password) {
+                loginStatus.innerHTML = '<p style="color: red;">Please enter both username and password</p>';
+                return;
+            }
+            
+            loginStatus.innerHTML = '<p>Logging in...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/auth/login/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Login failed');
+                }
+                
+                accessToken = data.access;
+                loginStatus.innerHTML = '<p style="color: green;">Login successful!</p>';
+                
+                // Enable get token button
+                document.getElementById('get-token-btn').disabled = false;
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                loginStatus.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+        
+        // Initialize camera
+        function initCamera() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    video.srcObject = stream;
+                    video.play();
+                })
+                .catch(function(err) {
+                    console.error("Error accessing camera: ", err);
+                    updateStatus(`Camera error: ${err.message}`);
+                });
+        } // DOM elements
+        const videoFileInput = document.getElementById('videoFile');
+        const video = document.getElementById('video');
+        const processedCanvas = document.getElementById('processedCanvas');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusDiv = document.getElementById('status');
+        
+        // Canvas context
+        const ctx = processedCanvas.getContext('2d');
+        
+        // WebSocket connection
+        let isProcessing = false;
+        let animationId = null;
+        let videoLoaded = false;
+        
+        // Set status message
+        function setStatus(message) {
+            statusDiv.textContent = `Status: ${message}`;
+        }
+        
+        // Handle video file selection
+        videoFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const videoURL = URL.createObjectURL(file);
+            video.src = videoURL;
+            
+            video.onloadedmetadata = () => {
+                processedCanvas.width = video.videoWidth;
+                processedCanvas.height = video.videoHeight;
+                videoLoaded = true;
+                playBtn.disabled = false;
+                connectBtn.disabled = false;
+                setStatus(`Video loaded: ${file.name}`);
+            };
+            
+            video.onerror = () => {
+                setStatus(`Error loading video: ${video.error.message}`);
+                videoLoaded = false;
+            };
+        });
+        
+        // Play video
+        playBtn.addEventListener('click', () => {
+            if (videoLoaded) {
+                video.play();
+                playBtn.disabled = true;
+                pauseBtn.disabled = false;
+                setStatus('Video playing');
+                
+                // If connected to server, start processing
+                if (socket && socket.readyState === WebSocket.OPEN && !isProcessing) {
+                    isProcessing = true;
+                    sendFrame();
+                }
+            }
+        });
+        
+        // Pause video
+        pauseBtn.addEventListener('click', () => {
+            video.pause();
+            playBtn.disabled = false;
+            pauseBtn.disabled = true;
+            setStatus('Video paused');
+            
+            // Stop processing frames
+            isProcessing = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        });
+        
+        // Connect to WebSocket server
+        connectBtn.addEventListener('click', () => {
+            if (!videoLoaded) {
+                setStatus('Please load a video first');
+                return;
+            }
+            
+            const connectionStatus = document.getElementById('connection-status');
+            
+            if (!wsToken) {
+                connectionStatus.innerHTML = '<p style="color: red;">Please get a token first</p>';
+                return;
+            }
+            
+            connectionStatus.innerHTML = '<p>Connecting...</p>';
+            
+            // Create WebSocket connection
+            const wsUrl = `ws://localhost:8000/ws/faceswap/?token=${wsToken}`;
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                setStatus('Connected to server');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                
+                // If video is playing, start sending frames
+                if (!video.paused) {
+                    isProcessing = true;
+                    sendFrame();
+                }
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'processed_frame') {
+                        // Display the processed frame
+                        const img = new Image();
+                        img.onload = () => {
+                            ctx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
+                        };
+                        img.src = 'data:image/jpeg;base64,' + data.frame;
+                    } else if (data.type === 'error') {
+                        console.error('Server error:', data.message);
+                    }
+                } catch (err) {
+                    console.error('Error parsing message:', err);
+                }
+            };
+            
+            socket.onclose = (event) => {
+                setStatus(`Disconnected from server: ${event.reason || 'Unknown reason'}`);
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                isProcessing = false;
+            };
+            
+            socket.onerror = (error) => {
+                setStatus('WebSocket error');
+                console.error('WebSocket error:', error);
+            };
+        });
+        
+        // Disconnect from server
+        disconnectBtn.addEventListener('click', () => {
+            if (socket) {
+                socket.close();
+                socket = null;
+                isProcessing = false;
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                setStatus('Disconnected from server');
+            }
+        });
+        
+        // Handle video end
+        video.addEventListener('ended', () => {
+            playBtn.disabled = false;
+            pauseBtn.disabled = true;
+            isProcessing = false;
+            setStatus('Video ended');
+        });
+        
+        // Send video frame to server
+        function sendFrame() {
+            if (!isProcessing || !socket || socket.readyState !== WebSocket.OPEN || video.paused) {
+                return;
+            }
+            
+            // Create a temporary canvas to capture the current video frame
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth;
+            tempCanvas.height = video.videoHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // Draw the current video frame to the canvas
+            tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Convert the canvas to a base64 encoded JPEG
+            const base64Image = tempCanvas.toDataURL('image/jpeg', 0.7);
+            // Send the frame to the server
+            socket.send(JSON.stringify({
+                type: 'video_frame',
+                frame: base64Image
+            }));
+            
+            // Request the next frame
+            animationId = requestAnimationFrame(sendFrame);
+        }
+        
+        // Update status message
+        function updateStatus(message) {
+            document.getElementById('status').textContent = `Status: ${message}`;
+        }
+
+
+        // Get WebSocket token
+        async function getWsToken() {
+            const tokenStatus = document.getElementById('token-status');
+            
+            if (!accessToken) {
+                tokenStatus.innerHTML = '<p style="color: red;">Please login first</p>';
+                return;
+            }
+            
+            tokenStatus.innerHTML = '<p>Getting token...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/ws-token/', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error('Failed to get WebSocket token');
+                }
+                
+                wsToken = data.token;
+                tokenStatus.innerHTML = '<p style="color: green;">Token received!</p>';
+                
+                
+            } catch (error) {
+                console.error('Token error:', error);
+                tokenStatus.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+
+        
+        
+        // Send a message
+        function sendMessage() {
+            const messageInput = document.getElementById('message');
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                return;
+            }
+            
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                addMessage('Not connected to server', 'error');
+                return;
+            }
+            
+            // Send the message
+            socket.send(JSON.stringify({
+                type: 'message',
+                message: message
+            }));
+            
+            // Add to messages
+            addMessage(`You: ${message}`, 'sent');
+            
+            // Clear input
+            messageInput.value = '';
+        }
+        
+    </script>
+</body>
+</html>
